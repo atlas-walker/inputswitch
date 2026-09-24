@@ -4,6 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var showingDetails = false
+    private var probeWindow: ProbeWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -16,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let remote = NSMenuItem(title: "Andrés PC — pendiente de prueba Bluetooth", action: nil, keyEquivalent: "")
         menu.addItem(remote)
         menu.addItem(.separator())
+        let bluetooth = NSMenuItem(title: "Prueba Bluetooth…", action: #selector(showBluetooth), keyEquivalent: "")
+        bluetooth.target = self
+        menu.addItem(bluetooth)
         let details = NSMenuItem(title: "Prueba de ejecución…", action: #selector(showDetails), keyEquivalent: "")
         details.target = self
         menu.addItem(details)
@@ -24,11 +28,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit.target = NSApplication.shared
         menu.addItem(quit)
         statusItem.menu = menu
-        showDetails()
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(stopBluetooth), name: NSWorkspace.willSleepNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(stopBluetooth), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
+        showBluetooth()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) { probeWindow?.probe.stop() }
+    @objc private func stopBluetooth() { probeWindow?.probe.stop() }
+    @objc private func showBluetooth() {
+        if probeWindow == nil { probeWindow = ProbeWindow() }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        probeWindow?.showWindow(nil)
+        probeWindow?.window?.makeKeyAndOrderFront(nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showDetails()
+        showBluetooth()
         return true
     }
 
@@ -40,16 +55,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = "InputSwitch se ha abierto correctamente"
         alert.informativeText = """
-        Hito 1 · Prueba de distribución
+        Hito 1 superado · Prototipo Bluetooth
 
         Encontrarás el menú de InputSwitch arriba, en la barra de menús, junto al texto «This Mac».
 
         Versión: \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "desconocida")
         Sistema: \(ProcessInfo.processInfo.operatingSystemVersionString)
 
-        El teclado y el trackpad permanecen en This Mac. Esta build todavía no captura entrada ni conecta por Bluetooth.
+        El teclado y el trackpad permanecen en This Mac. Esta build permite comprobar la publicación de un servicio Bluetooth HID temporal. No captura entrada global; solo envía acciones fijas desde los botones de prueba.
 
-        Para validar el hito, abre el ZIP distribuido en el Mac del trabajo con tu usuario habitual y comprueba que aparece este mensaje. Después selecciona Salir de InputSwitch.
+        Continúa desde Prueba Bluetooth y comparte el diagnóstico junto con el resultado observado en el Mac personal.
         """
         alert.addButton(withTitle: "Entendido")
         alert.runModal()

@@ -1,7 +1,7 @@
 # Plan de implementación: InputSwitch para macOS
 
 **Fecha:** 24 de septiembre de 2026.  
-**Estado:** hito 1 implementado; build de ejecución con firma ad hoc. Validación en el Mac del trabajo pendiente; Bluetooth y captura sin implementar. Véase `README.md`.  
+**Estado:** hito 1 confirmado por el usuario. Hito 2: prototipo Bluetooth 0.2.0 implementado, publicación local verificada; entrada real entre los dos Mac pendiente. Captura global sin implementar. Véanse `README.md` y `docs/VALIDACION.md`.  
 **Nombre provisional:** InputSwitch.  
 **Equipo emisor:** MacBook Pro M4 del trabajo, macOS Tahoe **26.7**, versión indicada por el usuario.  
 **Equipo receptor:** Mac personal de Andrés; modelo, arquitectura y versión de macOS pendientes de confirmar.

@@ -5,9 +5,11 @@
     <key>CFBundleIdentifier</key><string>com.andres.inputswitch</string>
     <key>CFBundleName</key><string>InputSwitch</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.1</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>0.2.0</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>LSUIElement</key><true/>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>InputSwitch utiliza Bluetooth para probar la conexión de teclado y ratón con tu otro Mac.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key><string>InputSwitch publica un servicio Bluetooth temporal para comprobar compatibilidad HID.</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

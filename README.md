@@ -1,15 +1,20 @@
 # InputSwitch
 
-Aplicación nativa de barra de menús para macOS. La implementación actual cubre
-el **hito 1 (ejecución y distribución)** de [PLAN.md](PLAN.md). El control remoto
-está deshabilitado hasta validar que la aplicación distribuida abre en el Mac
-del trabajo, tal como requiere el plan.
+Aplicación nativa de barra de menús para macOS. El **hito 1 (arranque en el Mac
+ del trabajo) ya fue confirmado**. La versión 0.2.0 implementa el prototipo de
+ Bluetooth Classic HID: publicación SDP, conexión con un Mac emparejado y pruebas
+ explícitas de tecla, movimiento y clic. Todavía no captura entrada global.
+
+[Descargar 0.2.0](https://github.com/atlas-walker/inputswitch/releases/tag/v0.2.0)
+· [Prueba Bluetooth](docs/PRUEBA-BLUETOOTH.md)
+· [Resultados y pendientes](docs/VALIDACION.md)
 
 ## Compilar
 
 En el Mac de desarrollo:
 
 ```sh
+bash scripts/test.sh
 bash scripts/build.sh
 open build/InputSwitch.app
 ```
