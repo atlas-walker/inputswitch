@@ -18,3 +18,17 @@ https://developer.apple.com/documentation/iobluetooth/iobluetoothl2capchannel
 
 Descriptor y mensajes basados en HID report protocol / HIDP. No es una certificación
 Bluetooth ni una afirmación de cumplimiento completo de HID 1.1.1.
+
+## Corrección de diagnóstico 0.2.1
+
+El usuario reportó timeout de conexión HID en 0.2.0. No se ha identificado su causa
+con ese dato aislado. La 0.2.1 añade apertura asíncrona del enlace básico autenticado,
+timeouts independientes por etapa y espera entrante explícita. Mantiene la
+comprobación de cifrado antes de habilitar pruebas de entrada.
+
+Los tests verifican también exposición de selectores Objective-C, entrega única
+de callbacks y descarte de callbacks después de cancelar/cerrar. No simulan un
+radio real ni demuestran que macOS acepte el rol HID.
+
+Referencia de la apertura explícita del enlace básico:
+https://developer.apple.com/documentation/iobluetooth/iobluetoothdevice/openconnection(_:withpagetimeout:authenticationrequired:)

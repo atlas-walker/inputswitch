@@ -7,6 +7,7 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
     private let devices = NSPopUpButton()
     private var paired: [IOBluetoothDevice] = []
     private let connectButton = NSButton(title: "Conectar HID", target: nil, action: nil)
+    private let incomingButton = NSButton(title: "Esperar al Mac personal", target: nil, action: nil)
     private var testButtons: [NSButton] = []
     private let output = NSTextView()
     private let startButton = NSButton(title: "Iniciar prueba SDP", target: nil, action: nil)
@@ -33,6 +34,9 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
         connectButton.action = #selector(connectDevice)
         let pairRow = NSStackView(views: [devices, refresh, connectButton])
         pairRow.spacing = 10
+        incomingButton.target = self
+        incomingButton.action = #selector(waitForIncoming)
+        incomingButton.isEnabled = false
         let labels = ["Probar tecla A", "Mover puntero", "Probar clic"]
         testButtons = labels.enumerated().map { index, title in
             let button = NSButton(title: title, target: self, action: #selector(runTest(_:)))
@@ -51,7 +55,7 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
         output.autoresizingMask = [.width]
         output.textContainer?.widthTracksTextView = true
         scroll.documentView = output
-        let stack = NSStackView(views: [intro, buttons, pairRow, testRow, scroll])
+        let stack = NSStackView(views: [intro, buttons, pairRow, incomingButton, testRow, scroll])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -70,6 +74,7 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
             self.output.string = self.probe.report
             self.startButton.isEnabled = !self.probe.active
             self.connectButton.isEnabled = self.probe.active && self.probe.canSelectDevice && self.devices.indexOfSelectedItem > 0
+            self.incomingButton.isEnabled = self.connectButton.isEnabled
             self.devices.isEnabled = self.probe.canSelectDevice
             self.testButtons.forEach { $0.isEnabled = self.probe.ready }
         }
@@ -80,6 +85,7 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
     @objc private func refreshDevices() {
         guard probe.canSelectDevice else { return }
+        probe.select(nil)
         paired = probe.pairedDevices
         devices.removeAllItems()
         devices.addItem(withTitle: "Selecciona tu Mac emparejado")
@@ -92,10 +98,12 @@ final class ProbeWindow: NSWindowController, NSWindowDelegate {
     @objc private func selectDevice() {
         guard probe.canSelectDevice else { return }
         let index = devices.indexOfSelectedItem - 1
-        guard paired.indices.contains(index) else { connectButton.isEnabled = false; return }
+        guard paired.indices.contains(index) else { probe.select(nil); return }
         probe.select(paired[index])
-        connectButton.isEnabled = probe.active && !probe.ready
+        connectButton.isEnabled = probe.active && probe.canSelectDevice
+        incomingButton.isEnabled = connectButton.isEnabled
     }
+    @objc private func waitForIncoming() { probe.waitForIncoming() }
     @objc private func connectDevice() { probe.connect() }
     @objc private func runTest(_ sender: NSButton) {
         let alert = NSAlert()

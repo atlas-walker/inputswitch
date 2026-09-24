@@ -19,11 +19,11 @@ mkdir -p build/release
 ditto build/InputSwitch.app build/release/InputSwitch.app
 cp docs/PRUEBA-TRABAJO.md build/release/PRUEBA-TRABAJO.md
 cp docs/PRUEBA-BLUETOOTH.md build/release/PRUEBA-BLUETOOTH.md
-ditto -c -k --sequesterRsrc build/release dist/InputSwitch-0.2.0-arm64.zip
-(cd dist && shasum -a 256 InputSwitch-0.2.0-arm64.zip > InputSwitch-0.2.0-arm64.zip.sha256)
+ditto -c -k --sequesterRsrc build/release dist/InputSwitch-0.2.1-arm64.zip
+(cd dist && shasum -a 256 InputSwitch-0.2.1-arm64.zip > InputSwitch-0.2.1-arm64.zip.sha256)
 {
     sw_vers
     xcrun swiftc --version
     xcrun --sdk macosx --show-sdk-version
 } > dist/build-environment.txt
-echo 'Entrega disponible en dist/InputSwitch-0.2.0-arm64.zip'
+echo 'Entrega disponible en dist/InputSwitch-0.2.1-arm64.zip'

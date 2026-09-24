@@ -1,11 +1,11 @@
 # InputSwitch
 
 Aplicación nativa de barra de menús para macOS. El **hito 1 (arranque en el Mac
- del trabajo) ya fue confirmado**. La versión 0.2.0 implementa el prototipo de
+ del trabajo) ya fue confirmado**. La versión 0.2.1 implementa el prototipo de
  Bluetooth Classic HID: publicación SDP, conexión con un Mac emparejado y pruebas
  explícitas de tecla, movimiento y clic. Todavía no captura entrada global.
 
-[Descargar 0.2.0](https://github.com/atlas-walker/inputswitch/releases/tag/v0.2.0)
+[Descargar 0.2.1](https://github.com/atlas-walker/inputswitch/releases/tag/v0.2.1)
 · [Prueba Bluetooth](docs/PRUEBA-BLUETOOTH.md)
 · [Resultados y pendientes](docs/VALIDACION.md)
 

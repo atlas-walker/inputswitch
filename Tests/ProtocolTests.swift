@@ -3,7 +3,7 @@ import IOBluetooth
 
 @main
 struct ProtocolTests {
-    static func main() {
+    @MainActor static func main() {
         // Parse HID short items independently of report encoder; verify descriptor agrees with wire lengths.
         var offset = 0, reportID = 0, size = 0, count = 0
         var inputBits: [Int:Int] = [:], outputBits: [Int:Int] = [:]
@@ -50,6 +50,28 @@ struct ProtocolTests {
         let descriptorList = IOBluetoothSDPDataElement(elementValue: (HIDDescriptor.service["0206"] as! NSObject))!.getArrayValue()!
         let descriptor = (descriptorList[0] as! IOBluetoothSDPDataElement).getArrayValue()!
         precondition((descriptor[1] as! IOBluetoothSDPDataElement).getDataValue() == Data(HIDDescriptor.bytes))
-        print("PASS: HID descriptor sizes, HIDP requests/malformed input, SDP encoding and PSM decoding")
+        // Verify Objective-C callback exposure, forwarding, and cancellation without using a radio.
+        let writer = ProbeChannel()
+        precondition(writer.responds(to: NSSelectorFromString("l2capChannelOpenComplete:status:")))
+        precondition(writer.responds(to: NSSelectorFromString("l2capChannelData:data:length:")))
+        precondition(writer.responds(to: NSSelectorFromString("l2capChannelWriteComplete:refcon:status:")))
+        var callbacks = 0
+        writer.onOpen = { status in precondition(status == 0); callbacks += 1 }
+        writer.l2capChannelOpenComplete(nil, status: 0)
+        precondition(callbacks == 1)
+        writer.close()
+        writer.l2capChannelOpenComplete(nil, status: 0)
+        precondition(callbacks == 1, "Late open must not restart a closed channel")
+        let attempt = ProbeBaseband()
+        precondition(attempt.responds(to: NSSelectorFromString("connectionComplete:status:")))
+        attempt.completion = { _, result in precondition(result == 7); callbacks += 1 }
+        attempt.connectionComplete(nil, status: 7)
+        attempt.connectionComplete(nil, status: 7)
+        precondition(callbacks == 2, "Completion must be consumed only once")
+        attempt.completion = { _, _ in callbacks += 1 }
+        attempt.completion = nil
+        attempt.connectionComplete(nil, status: 0)
+        precondition(callbacks == 2, "Cancelled attempts must not restart a session")
+        print("PASS: HID descriptor sizes, HIDP requests/malformed input, SDP encoding and PSM decoding; ObjC callbacks and cancelled/late completion")
     }
 }

@@ -17,46 +17,110 @@ final class ClassicHIDProbe: NSObject {
     private var connectionTimer: Timer?
     private var testTimer: Timer?
     private var generation = 0
+    private var connecting = false
+    private var wantsOutgoing = false
+    private var phase = "sin conexión"
+    private var basebandAttempts: [ProbeBaseband] = []
+    private var encryptionTimer: Timer?
+    private var attemptStarted: TimeInterval = 0
     private(set) var ready = false
     private var testing = false
     private var currentKeyboard = HIDReports.keyboardNeutral
     private var currentMouse = HIDReports.mouseNeutral
 
-    var canSelectDevice: Bool { controlChannel == nil && interruptChannel == nil }
+    var canSelectDevice: Bool { !connecting && controlChannel == nil && interruptChannel == nil }
     var pairedDevices: [IOBluetoothDevice] { (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? [] }
 
-    func select(_ device: IOBluetoothDevice) {
-        guard !ready, controlChannel == nil, interruptChannel == nil else {
+    func select(_ device: IOBluetoothDevice?) {
+        guard !ready, canSelectDevice else {
             log("Detén la prueba antes de cambiar de receptor."); return
         }
         selected = device
-        log("Receptor seleccionado explícitamente (identificador omitido).")
+        log(device == nil ? "Selección de receptor borrada." : "Receptor seleccionado explícitamente (identificador omitido).")
     }
 
     func connect() {
-        guard active, controlChannel == nil, interruptChannel == nil else { return }
+        guard active, canSelectDevice else { return }
         guard let selected, selected.isPaired() else {
             log("Selecciona primero el Mac personal ya emparejado en Ajustes de Bluetooth."); return
         }
-        guard retired.count < 8 else { log("Límite de intentos del prototipo alcanzado. Cierra y abre la app antes de continuar."); return }
-        log("Abriendo canales HID hacia el receptor seleccionado…")
-        armConnectionTimeout()
-        openOutgoing(psm: 0x11, device: selected)
+        guard retired.count < 8, basebandAttempts.count < 8 else {
+            log("Límite de intentos del prototipo alcanzado. Cierra y abre la app antes de continuar."); return
+        }
+        connecting = true
+        wantsOutgoing = true
+        attemptStarted = ProcessInfo.processInfo.systemUptime
+        logLinkState("Antes de conectar")
+        if selected.isConnected() {
+            log("Enlace Bluetooth básico ya conectado. Se conserva la conexión compartida.")
+            openOutgoing(psm: 0x11, device: selected)
+            return
+        }
+        let session = generation
+        let callback = ProbeBaseband()
+        callback.completion = { [weak self] device, result in
+            guard let self, self.active, self.generation == session else { return }
+            if let device, device.addressString != self.selected?.addressString { return }
+            self.log(String(format: "Finalización enlace básico: 0x%08X", result))
+            self.logLinkState("Después del enlace básico")
+            guard result == kIOReturnSuccess, let device, device.isConnected() else {
+                self.fail("No se completó el enlace Bluetooth básico; aún no se intentó abrir HID."); return
+            }
+            guard self.controlChannel == nil else { return }
+            self.openOutgoing(psm: 0x11, device: device)
+        }
+        basebandAttempts.append(callback)
+        armConnectionTimeout(phase: "enlace Bluetooth básico", seconds: 12)
+        // 0x3200 slots × 0.625 ms = 8 seconds; callback target makes this asynchronous.
+        let result = selected.openConnection(callback, withPageTimeout: 0x3200, authenticationRequired: true)
+        log(String(format: "Solicitud enlace básico autenticado: 0x%08X", result))
+        if result != kIOReturnSuccess {
+            callback.completion = nil
+            if selected.isConnected() { openOutgoing(psm: 0x11, device: selected) }
+            else { fail("Solicitud de enlace Bluetooth básico rechazada.") }
+        }
     }
 
-    private func armConnectionTimeout() {
+    func waitForIncoming() {
+        guard active, canSelectDevice, selected?.isPaired() == true else { return }
+        guard retired.count < 8 else { log("Reinicia la app antes de otro intento."); return }
+        connecting = true
+        attemptStarted = ProcessInfo.processInfo.systemUptime
+        wantsOutgoing = false
+        logLinkState("Espera entrante")
+        log("En el Mac personal abre Ajustes > Bluetooth e intenta conectar al Mac del trabajo, si aparece esa opción.")
+        log("Solo se aceptarán canales del receptor seleccionado. No se abrirán canales salientes automáticamente en esta espera.")
+        armConnectionTimeout(phase: "conexión iniciada desde el Mac personal", seconds: 45)
+    }
+
+    private func logLinkState(_ label: String) {
+        guard let selected else { return }
+        log("\(label): emparejado=\(selected.isPaired()), enlace=\(selected.isConnected()), cifrado=\(selected.isConnected() ? String(selected.getEncryptionMode()) : "no disponible"), canales=\(opened.sorted().map { String(format: "0x%04X", $0) }.joined(separator: ",")).")
+    }
+
+    private func armConnectionTimeout(phase: String, seconds: TimeInterval = 12) {
+        self.phase = phase
         connectionTimer?.invalidate()
-        connectionTimer = ProbeTimer.schedule(withTimeInterval: 12, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fail("Timeout de conexión HID (12 s).") }
+        let session = generation
+        log("Esperando \(phase) (máximo \(Int(seconds)) s).")
+        connectionTimer = ProbeTimer.schedule(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.active, self.generation == session else { return }
+                self.logLinkState("Estado al agotar el tiempo")
+                self.log(String(format: "Tiempo total del intento: %.1f s", ProcessInfo.processInfo.systemUptime - self.attemptStarted))
+                self.fail("Timeout esperando \(self.phase). Un PSM publicado localmente no garantiza que el receptor acepte HID.")
+            }
         }
     }
 
     private func openOutgoing(psm: UInt16, device: IOBluetoothDevice) {
+        armConnectionTimeout(phase: psm == 0x11 ? "canal HID de control 0x0011" : "canal HID de interrupción 0x0013")
         let writer = makeChannel(psm: psm)
         if psm == 0x11 { controlChannel = writer } else { interruptChannel = writer }
         var channel: IOBluetoothL2CAPChannel?
         let result = device.openL2CAPChannelAsync(&channel, withPSM: psm, delegate: writer)
-        writer.channel = channel
+        if writer.channel == nil { writer.channel = channel }
+        log("La solicitud asíncrona \(channel == nil ? "no devolvió" : "devolvió") un objeto de canal; falta su callback.")
         log(String(format: "Apertura PSM 0x%04X: 0x%08X", psm, result))
         if result != kIOReturnSuccess { fail("La apertura L2CAP fue rechazada.") }
     }
@@ -68,11 +132,12 @@ final class ClassicHIDProbe: NSObject {
         writer.onClose = { [weak self] in guard let self, self.generation == session else { return }; self.fail("Canal HID desconectado. This Mac sigue activo.") }
         writer.onOpen = { [weak self] result in
             guard let self, self.active, self.generation == session else { return }
+            self.log(String(format: "Callback L2CAP PSM 0x%04X: 0x%08X", psm, result))
             guard result == kIOReturnSuccess else {
                 self.fail(String(format: "Finalización L2CAP: 0x%08X", result)); return
             }
             self.opened.insert(psm)
-            if psm == 0x11, self.interruptChannel == nil, let device = self.selected {
+            if self.wantsOutgoing, psm == 0x11, self.interruptChannel == nil, let device = self.selected {
                 self.openOutgoing(psm: 0x13, device: device)
             }
             self.checkReady()
@@ -83,10 +148,24 @@ final class ClassicHIDProbe: NSObject {
 
     private func checkReady() {
         guard opened == [0x11,0x13], !ready else { return }
-        guard let selected, selected.isPaired(), selected.isConnected(), selected.getEncryptionMode() != 0 else {
-            fail("No se confirmó vínculo emparejado y cifrado. No se enviará entrada."); return
+        guard let selected, selected.isPaired(), selected.isConnected() else {
+            fail("No se confirmó vínculo emparejado y conectado. No se enviará entrada."); return
+        }
+        guard selected.getEncryptionMode() != 0 else {
+            guard encryptionTimer == nil else { return }
+            armConnectionTimeout(phase: "confirmación de cifrado", seconds: 5)
+            let session = generation
+            encryptionTimer = ProbeTimer.schedule(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.active, self.generation == session else { return }
+                    self.checkReady()
+                }
+            }
+            return
         }
         connectionTimer?.invalidate()
+        encryptionTimer?.invalidate()
+        connecting = false
         ready = true
         log("CANALES LISTOS · receptor emparejado y cifrado. Falta verificar entrada en el otro Mac.")
         sendReport(HIDReports.keyboardNeutral)
@@ -154,7 +233,7 @@ final class ClassicHIDProbe: NSObject {
     func start() {
         guard !active, record == nil else { return }
         lines = []
-        log("InputSwitch 0.2.0 · SDP HID v1 · This Mac")
+        log("InputSwitch 0.2.1 · SDP HID v1 · This Mac")
         log("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         log("Sin captura global. Solo pruebas explícitas. Identificadores del equipo omitidos.")
         guard let controller = IOBluetoothHostController.default() else {
@@ -196,9 +275,8 @@ final class ClassicHIDProbe: NSObject {
 
     @objc private func channelOpened(_ notification: IOBluetoothUserNotification, channel: IOBluetoothL2CAPChannel) {
         guard active, let selected, selected.isPaired(),
-              channel.device?.addressString == selected.addressString,
-              selected.getEncryptionMode() != 0 else {
-            _ = channel.close(); log("Canal entrante rechazado: par no seleccionado o sin cifrado."); return
+              channel.device?.addressString == selected.addressString else {
+            _ = channel.close(); log("Canal entrante rechazado: par no seleccionado o no emparejado."); return
         }
         let psm = channel.psm
         guard (psm == 0x11 && controlChannel == nil) || (psm == 0x13 && interruptChannel == nil) else {
@@ -210,14 +288,20 @@ final class ClassicHIDProbe: NSObject {
         let result = channel.setDelegate(writer)
         guard result == kIOReturnSuccess else { _ = channel.close(); fail("No se pudo recibir el canal entrante."); return }
         if psm == 0x11 { controlChannel = writer } else { interruptChannel = writer }
+        connecting = true
         opened.insert(psm)
         log(String(format: "Canal entrante aceptado: 0x%04X", psm))
-        armConnectionTimeout()
+        armConnectionTimeout(phase: "segundo canal HID entrante")
         checkReady()
     }
 
     func stop() {
         generation += 1
+        connecting = false
+        wantsOutgoing = false
+        encryptionTimer?.invalidate()
+        encryptionTimer = nil
+        basebandAttempts.forEach { $0.completion = nil }
         let wasReady = ready
         ready = false
         testing = false
